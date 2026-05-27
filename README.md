@@ -31,10 +31,14 @@ C:\ProjectFolder> .venv\Scripts\activate
 ### Step 5: Install Architecture Dependency Modules
 With your terminal successfully bound to the active virtual sandbox ecosystem, execute a bulk collection pull to install the foundational asynchronous and interface tracking packages.
 ```cmd
-(.venv) C:\ProjectFolder> pip install streamlit aiohttp
+(.venv) C:\ProjectFolder> pip install streamlit aiohttp python-dotenv
 ```
+### Step 6: Configure Environment Credentials
+To ensure full security governance and prevent API key leakage, create a file named exactly `.env` in your root project folder and define the variable placeholder
 
-### Step 6: Deploy the Live Cloud Pipeline Runtime
+`CHUTES_API_TOKEN=YOUR_CHUTES_API_TOKEN_PLACEHOLDER`
+
+### Step 7: Deploy the Live Cloud Pipeline Runtime
 Launch the background orchestration engine and initialize the browser user interface by invoking the Streamlit pipeline execution script
 ```cmd
 (.venv) C:\ProjectFolder> python -m streamlit run Chutes_AI.py
