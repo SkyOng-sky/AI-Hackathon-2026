@@ -3,12 +3,15 @@ import streamlit.components.v1 as components
 import json
 import asyncio
 import aiohttp
+import os
+from dotenv import load_dotenv
 
 # ==========================================
 # ⚙️  CONFIG & CATALOG
 # ==========================================
+load_dotenv()
 TARGET_MODEL = "google/gemma-4-31B-turbo-TEE"
-CHUTES_API_TOKEN = "cpk_f3f3bc6a793d4d03a599f5ee3358f430.929d18a651835cafa634cf7fd8550553.5qpiVBymo0TmZLOOfH62fPFx8zK9lTxj"
+CHUTES_API_TOKEN = os.getenv("CHUTES_API_TOKEN", "YOUR_CHUTES_API_TOKEN_PLACEHOLDER")
 BASE_API_URL = "https://llm.chutes.ai/v1/chat/completions"
 
 CATALOG = {
