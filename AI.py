@@ -1,51 +1,55 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import json
-import ollama
+import asyncio
+import aiohttp
+import os
+from dotenv import load_dotenv
 
 # ==========================================
 # ⚙️  CONFIG & CATALOG
 # ==========================================
-TARGET_MODEL = "llama3.2:latest"
+load_dotenv()
+TARGET_MODEL = "google/gemma-4-31B-turbo-TEE"
+CHUTES_API_TOKEN = os.getenv("CHUTES_API_TOKEN", "YOUR_CHUTES_API_TOKEN_PLACEHOLDER")
+BASE_API_URL = "https://llm.chutes.ai/v1/chat/completions"
 
 CATALOG = {
     "cpus": [
-        {"id": "CPU-I9",  "name": "Intel Core i9-14900K",       "cost": 2200, "tier": "high-end",  "tdp": 125},
-        {"id": "CPU-I5",  "name": "Intel Core i5-14600K",       "cost": 1100, "tier": "mid-range", "tdp": 125},
-        {"id": "CPU-R5",  "name": "AMD Ryzen 5 7600",           "cost": 880,  "tier": "mid-range", "tdp": 65},
-        {"id": "CPU-R3",  "name": "AMD Ryzen 3 4100",           "cost": 370,  "tier": "budget",    "tdp": 65},
-        {"id": "CPU-OFC", "name": "Intel Core i5-13400 (iGPU)", "cost": 920,  "tier": "office",    "tdp": 65},
+        {"id": "CPU-I9", "name": "Intel Core i9-14900K", "cost": 2200, "tier": "high-end", "tdp": 125},
+        {"id": "CPU-I5", "name": "Intel Core i5-14600K", "cost": 1100, "tier": "mid-range", "tdp": 125},
+        {"id": "CPU-R5", "name": "AMD Ryzen 5 7600", "cost": 880, "tier": "mid-range", "tdp": 65},
+        {"id": "CPU-R3", "name": "AMD Ryzen 3 4100", "cost": 370, "tier": "budget", "tdp": 65},
+        {"id": "CPU-OFC", "name": "Intel Core i5-13400 (iGPU)", "cost": 920, "tier": "office", "tdp": 65},
     ],
     "gpus": [
-        {"id": "GPU-4090", "name": "NVIDIA GeForce RTX 4090 24GB", "cost": 7500, "tier": "high-end",  "tdp": 450},
+        {"id": "GPU-4090", "name": "NVIDIA GeForce RTX 4090 24GB", "cost": 7500, "tier": "high-end", "tdp": 450},
         {"id": "GPU-4070", "name": "NVIDIA GeForce RTX 4070 12GB", "cost": 2500, "tier": "mid-range", "tdp": 200},
-        {"id": "GPU-4060", "name": "NVIDIA GeForce RTX 4060 8GB",  "cost": 1300, "tier": "budget",    "tdp": 115},
-        {"id": "GPU-NONE", "name": "Integrated Graphics (iGPU)",   "cost": 0,    "tier": "office",    "tdp": 0},
+        {"id": "GPU-4060", "name": "NVIDIA GeForce RTX 4060 8GB", "cost": 1300, "tier": "budget", "tdp": 115},
+        {"id": "GPU-NONE", "name": "Integrated Graphics (iGPU)", "cost": 0, "tier": "office", "tdp": 0},
     ],
     "rams": [
         {"id": "RAM-64", "name": "64GB DDR5-5600 (2×32GB)", "cost": 820, "gb": 64},
         {"id": "RAM-32", "name": "32GB DDR5-5200 (2×16GB)", "cost": 420, "gb": 32},
-        {"id": "RAM-16", "name": "16GB DDR4-3200 (2×8GB)",  "cost": 180, "gb": 16},
-        {"id": "RAM-8",  "name": "8GB DDR4-3200 (1×8GB)",   "cost": 100, "gb": 8},
+        {"id": "RAM-16", "name": "16GB DDR4-3200 (2×8GB)", "cost": 180, "gb": 16},
+        {"id": "RAM-8", "name": "8GB DDR4-3200 (1×8GB)", "cost": 100, "gb": 8},
     ],
     "storages": [
-        {"id": "SSD-2T",  "name": "2TB WD Black NVMe Gen4",   "cost": 450, "size": "2TB"},
-        {"id": "SSD-1T",  "name": "1TB Samsung 980 Pro NVMe", "cost": 240, "size": "1TB"},
-        {"id": "SSD-512", "name": "512GB Kingston NV2 NVMe",  "cost": 140, "size": "512GB"},
+        {"id": "SSD-2T", "name": "2TB WD Black NVMe Gen4", "cost": 450, "size": "2TB"},
+        {"id": "SSD-1T", "name": "1TB Samsung 980 Pro NVMe", "cost": 240, "size": "1TB"},
+        {"id": "SSD-512", "name": "512GB Kingston NV2 NVMe", "cost": 140, "size": "512GB"},
     ],
     "psus": [
-        {"id": "PSU-1000", "name": "Corsair RM1000x 1000W Gold",    "cost": 620, "w": 1000},
-        {"id": "PSU-750",  "name": "Seasonic Focus 750W Gold",      "cost": 380, "w": 750},
-        {"id": "PSU-550",  "name": "Cooler Master MWE 550W Bronze", "cost": 200, "w": 550},
+        {"id": "PSU-1000", "name": "Corsair RM1000x 1000W Gold", "cost": 220, "w": 1000},
+        {"id": "PSU-750", "name": "Seasonic Focus 750W Gold", "cost": 180, "w": 750},
+        {"id": "PSU-550", "name": "Cooler Master MWE 550W Bronze", "cost": 100, "w": 550},
     ],
     "motherboards": [
         {"id": "MB-HI", "name": "ASUS ROG Strix Z790-E Gaming WiFi", "cost": 1500, "tier": "high-end"},
-        {"id": "MB-MI", "name": "MSI MAG B760M Mortar WiFi",         "cost": 650,  "tier": "mid-range"},
-        {"id": "MB-LO", "name": "Gigabyte B450M DS3H",               "cost": 280,  "tier": "budget"},
+        {"id": "MB-MI", "name": "MSI MAG B760M Mortar WiFi", "cost": 650, "tier": "mid-range"},
+        {"id": "MB-LO", "name": "Gigabyte B450M DS3H", "cost": 280, "tier": "budget"},
     ],
 }
-
-TIER_THRESHOLDS = {"high-end": 6000, "mid-range": 3000}
 
 LOCATION_ALIASES: dict[str, str] = {
     "kuala lumpur": "Kuala Lumpur", "kl": "Kuala Lumpur", "klcc": "Kuala Lumpur",
@@ -58,11 +62,12 @@ LOCATION_ALIASES: dict[str, str] = {
 
 SHIPPING_REGIONS = {
     "Kuala Lumpur": {"base_fee": 20},
-    "Penang":       {"base_fee": 30},
-    "Sarawak":      {"base_fee": 80},
+    "Penang": {"base_fee": 30},
+    "Sarawak": {"base_fee": 80},
 }
 DEFAULT_SHIPPING = {"base_fee": 50}
 
+TIER_THRESHOLDS = {"high-end": 6000, "mid-range": 3000}
 BLANK_SPECS = {"use_case": "None", "performance_tier": "None", "max_budget": 0, "location": "None"}
 
 EXAMPLE_PROMPTS = [
@@ -72,38 +77,42 @@ EXAMPLE_PROMPTS = [
     "Change to mid-range tier, keep everything else",
 ]
 
-# Max recent turns kept in memory (each turn = 2 messages)
-MEMORY_TURNS = 6
-
 # ==========================================
 # 📝  SYSTEM PROMPTS
 # ==========================================
-
-# ── Unified: parse intent + spec extraction in ONE call ──────────
 UNIFIED_ANALYSIS_PROMPT = """You are the brain of a PC sales engine at ByteForge, a Malaysian computer shop.
-Read the customer message and conversation history, then output a single JSON object.
+Inspect the latest customer message and full conversation history, then output a single JSON object.
 
-CURRENT SAVED CONFIGURATION:
+=== CURRENT SAVED CONFIGURATION ===
 {current_specs}
 
-FULL CATALOG:
+=== FULL CATALOG ===
 {catalog}
 
-RULES:
-1. "intent": set to "technical" if the message touches hardware, budget, location, use-case, or any build changes. Set to "chitchat" ONLY for pure greetings with zero PC content.
+=== RULES ===
+1. "intent": "technical" if the message touches hardware, budget, location, use-case, or build changes.
+   "intent": "chitchat" for pure greetings/small-talk with no PC content.
 2. "extracted_specs": ONLY update fields the customer explicitly mentioned. Copy all other fields verbatim from CURRENT SAVED CONFIGURATION.
-3. use_case must be exactly one of: "gaming" | "workstation" | "content-creation" | "office" | "None"
-4. performance_tier: if not explicitly named, infer from budget — under RM3000 → "budget", RM3000-5999 → "mid-range", RM6000+ → "high-end". Office builds → "office".
-5. location: normalise any Malaysian city/region to "Kuala Lumpur", "Penang", or "Sarawak".
-6. "needs_clarification": list fields that are still missing (value "None" or 0). Only include "use_case" and/or "location".
+3. use_case must be one of: "gaming" | "workstation" | "content-creation" | "office" | "None"
+4. performance_tier: if not named, infer from budget — <RM3000→"budget", RM3000-5999→"mid-range", RM6000+→"high-end", office builds→"office".
+5. location: normalise Malaysian city/region names to "Kuala Lumpur", "Penang", or "Sarawak".
+6. "needs_clarification": list any of ["use_case","location"] that are still missing (value is "None" or 0 after update).
 7. "can_build": true only when use_case, location, AND max_budget are all known and non-zero.
 
-IMPORTANT: Output ONLY a raw JSON object. No markdown. No explanation. No code fences.
-Schema:
-{{"intent":"technical","extracted_specs":{{"use_case":"string","performance_tier":"string","max_budget":0,"location":"string"}},"needs_clarification":[],"can_build":false}}"""
+Output ONLY valid JSON matching this exact schema (no markdown, no extra keys):
+{{
+  "intent": "technical" | "chitchat",
+  "extracted_specs": {{
+    "use_case": "string",
+    "performance_tier": "string",
+    "max_budget": integer,
+    "location": "string"
+  }},
+  "needs_clarification": ["field", ...],
+  "can_build": true | false
+}}"""
 
-# ── AI component picker ───────────────────────────────────────────
-COMPONENT_PICKER_PROMPT = """You are a PC hardware expert. Choose the best components from the catalog for this customer.
+COMPONENT_PICKER_PROMPT = """You are a PC hardware expert. Select the best possible components from the catalog for this customer.
 
 CUSTOMER REQUIREMENTS:
 {criteria}
@@ -113,27 +122,36 @@ FULL CATALOG:
 
 SHIPPING FEES (MYR): Kuala Lumpur=20, Penang=30, Sarawak=80, elsewhere=50
 
-HARD CONSTRAINTS — violations make the build invalid:
-1. Total hardware cost + shipping fee MUST be less than or equal to max_budget.
-2. PSU wattage MUST exceed (CPU tdp + GPU tdp) multiplied by 1.6.
+HARD CONSTRAINTS (violations = invalid build):
+1. Total hardware cost + shipping fee MUST be ≤ max_budget.
+2. PSU wattage MUST exceed (CPU tdp + GPU tdp) × 1.6.
 3. For use_case "office": use CPU-OFC and GPU-NONE only.
-4. All selected IDs must exist exactly as shown in the catalog above.
+4. All selected IDs must exist exactly as shown in the catalog.
 
-OPTIMISATION GOALS (in order of priority):
-1. Match the performance_tier target as closely as possible.
-2. Maximise value: if budget allows upgrading a component without exceeding the cap, do it.
-3. Prefer components that suit the use_case (workstation → more RAM; gaming → stronger GPU; content-creation → fast storage + GPU).
+OPTIMISATION GOALS (in priority order):
+1. Meet the performance_tier target as closely as possible.
+2. Maximise value: if budget allows upgrading a component without breaching the cap, upgrade it.
+3. Prefer components that match the use_case (e.g. workstation → more RAM; gaming → stronger GPU; content-creation → fast storage + GPU).
 
-IMPORTANT: Output ONLY a raw JSON object. No markdown. No explanation. No code fences.
-Schema:
-{{"cpu_id":"...","gpu_id":"...","ram_id":"...","storage_id":"...","psu_id":"...","mb_id":"...","reasoning":"one sentence"}}"""
+Output ONLY valid JSON (no markdown, no extra keys):
+{{
+  "cpu_id": "...",
+  "gpu_id": "...",
+  "ram_id": "...",
+  "storage_id": "...",
+  "psu_id": "...",
+  "mb_id": "...",
+  "reasoning": "one sentence explaining key trade-offs made"
+}}"""
 
 RESPONDER_SYSTEM_PROMPT = """You are a friendly expert PC sales engineer at ByteForge, a Malaysian computer shop.
 You remember the full conversation. Reference earlier context naturally.
-Be conversational and warm. Keep replies to 2-4 sentences. No bullet points."""
+Be conversational and warm. Keep replies to 2–4 sentences. No bullet points."""
 
 CHITCHAT_SYSTEM_PROMPT = """You are a friendly PC sales engineer at ByteForge, a Malaysian computer shop.
-Reply naturally to greetings and small talk in 1-3 sentences. You remember the full conversation."""
+Reply naturally to greetings and small talk in 1–3 sentences. You remember the full conversation."""
+
+MEMORY_TURNS = 6
 
 # ==========================================
 # 🎨  CSS
@@ -202,19 +220,19 @@ header, footer, [data-testid="stToolbar"],
 .bom-table tr:last-child td { border-bottom: none; }
 .td-r { text-align: right; }
 .td-bold { font-weight: 700; color: #1a73e8; }
-.bom-table tr:hover td { background: rgba(26,115,232,0.05); }
+.bom-table tr:hover td { background: rgba(26, 115, 232, 0.05); }
 .ai-reasoning { font-size: 0.78rem; opacity: 0.5; font-style: italic; margin: 6px 0 2px 2px; }
 
 .fin-row { display: flex; gap: 10px; margin: 10px 0 12px; }
-.fin-card { flex: 1; background: rgba(128,128,128,0.08); border: 1px solid rgba(128,128,128,0.2); border-radius: 10px; padding: 10px 14px; color: inherit; }
+.fin-card { flex: 1; background: rgba(128, 128, 128, 0.08); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 10px; padding: 10px 14px; color: inherit; }
 .fc-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.5; margin-bottom: 3px; }
 .fc-value { font-size: 1.05rem; font-weight: 700; }
 .fc-delta { font-size: 0.78rem; color: #34a853; margin-top: 2px; }
 
 .budget-bar-wrap { margin: 10px 0 14px; }
 .budget-bar-label { font-size: 0.82rem; font-weight: 600; opacity: 0.65; margin-bottom: 5px; }
-.budget-bar-bg { height: 8px; background: rgba(128,128,128,0.2); border-radius: 8px; overflow: hidden; }
-.budget-bar-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg,#4285f4,#34a853); transition: width 0.5s ease; }
+.budget-bar-bg { height: 8px; background: rgba(128, 128, 128, 0.2); border-radius: 8px; overflow: hidden; }
+.budget-bar-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #4285f4, #34a853); transition: width 0.5s ease; }
 
 div.pill-wrap div[data-testid="stButton"] > button {
     text-align: left !important; justify-content: flex-start !important;
@@ -227,10 +245,10 @@ div.pill-wrap div[data-testid="stButton"] > button {
     transition: background 0.15s, color 0.15s, border-color 0.15s !important;
 }
 div.pill-wrap div[data-testid="stButton"] > button:hover {
-    background: rgba(26,115,232,0.15) !important; border-color: #1a73e8 !important; color: #1a73e8 !important;
+    background: rgba(26, 115, 232, 0.15) !important; border-color: #1a73e8 !important; color: #1a73e8 !important;
 }
 .stButton > button { border-radius: 22px; border: 1px solid rgba(128,128,128,0.4); background: transparent; font-weight: 500; transition: all 0.18s; }
-.stButton > button:hover { background: rgba(26,115,232,0.15) !important; border-color: #1a73e8 !important; color: #1a73e8 !important; }
+.stButton > button:hover { background: rgba(26, 115, 232, 0.15) !important; border-color: #1a73e8 !important; color: #1a73e8 !important; }
 
 .cat-wrap { border: 1px solid rgba(128,128,128,0.3); border-radius: 12px; padding: 12px; margin-top: 12px; }
 .cat-wrap summary { font-size: 0.83rem; font-weight: 600; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; outline: none; opacity: 0.7; }
@@ -255,40 +273,8 @@ TYPING_BUBBLE = f"""<div class="msg-bot">
 </div>"""
 
 MONITOR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1.2em" height="1.2em" viewBox="0 0 24 24" style="vertical-align:text-bottom;margin-right:6px;"><path fill="currentColor" d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>'
-GRAPH_SVG  = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" style="vertical-align:text-bottom;margin-right:4px;"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M3.5 4v13.5a3 3 0 0 0 3 3H20"/><path d="m6.5 15 4.5-4.5 3.5 3.5L20 8.5"/></g></svg>'
-PROD_SVG   = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" style="vertical-align:text-bottom;margin-right:4px;"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
-
-
-# ==========================================
-# 🛠️  HELPERS
-# ==========================================
-def _trim_memory(history: list, max_turns: int = MEMORY_TURNS) -> list:
-    """Keep only the most recent `max_turns` user/assistant pairs."""
-    pairs, i = [], len(history) - 1
-    while i >= 1 and len(pairs) < max_turns * 2:
-        if history[i]["role"] == "assistant" and history[i - 1]["role"] == "user":
-            pairs.insert(0, history[i - 1])
-            pairs.insert(1, history[i])
-            i -= 2
-        else:
-            i -= 1
-    return pairs
-
-
-def _budget_to_tier(budget: int) -> str:
-    if budget >= TIER_THRESHOLDS["high-end"]:  return "high-end"
-    if budget >= TIER_THRESHOLDS["mid-range"]: return "mid-range"
-    return "budget"
-
-
-def _clean_json(raw: str) -> str:
-    """Strip markdown code fences that some local models emit."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.strip("`").strip()
-        if raw.lower().startswith("json"):
-            raw = raw[4:].strip()
-    return raw
+GRAPH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" style="vertical-align:text-bottom;margin-right:4px;"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M3.5 4v13.5a3 3 0 0 0 3 3H20"/><path d="m6.5 15 4.5-4.5 3.5 3.5L20 8.5"/></g></svg>'
+PROD_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" style="vertical-align:text-bottom;margin-right:4px;"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
 
 
 # ==========================================
@@ -302,7 +288,9 @@ def _bom_html(bom: list, reasoning: str = "") -> str:
       <td class="td-r">MYR {i['unit_cost']:,}</td>
       <td class="td-r td-bold">MYR {i['qty'] * i['unit_cost']:,}</td>
     </tr>""" for i in bom)
+
     reasoning_html = f'<div class="ai-reasoning">💡 {reasoning}</div>' if reasoning else ""
+
     return f"""{reasoning_html}<div class="bom-wrap">
   <table class="bom-table">
     <thead><tr>
@@ -316,12 +304,12 @@ def _bom_html(bom: list, reasoning: str = "") -> str:
 
 def show_message(role: str, content: str, result=None, max_budget: int = 0) -> None:
     if role == "user":
-        st.markdown(f'<div class="msg-user"><div class="bubble-user">{content}</div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="msg-user"><div class="bubble-user">{content}</div></div>', unsafe_allow_html=True)
     else:
         st.markdown(
             f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{content}</div></div>',
-            unsafe_allow_html=True)
+            unsafe_allow_html=True,
+        )
         if result:
             _render_result(result, max_budget)
         st.markdown('<div class="turn-divider"></div>', unsafe_allow_html=True)
@@ -338,10 +326,11 @@ def _render_result(result: dict, max_budget: int) -> None:
             st.markdown(f"""
             <div class="budget-bar-wrap">
               <div class="budget-bar-label">Budget utilisation: {pct}%</div>
-              <div class="budget-bar-bg"><div class="budget-bar-fill" style="width:{min(pct,100)}%"></div></div>
+              <div class="budget-bar-bg"><div class="budget-bar-fill" style="width:{min(pct, 100)}%"></div></div>
             </div>""", unsafe_allow_html=True)
 
         delta = f'<div class="fc-delta">▲ MYR {rem:,} remaining</div>' if bgt and rem > 0 else ""
+
         st.markdown(f"""
         <div class="fin-row">
           <div class="fin-card"><div class="fc-label">Components</div><div class="fc-value">MYR {fin['hw_total']:,}</div></div>
@@ -355,6 +344,7 @@ def _render_result(result: dict, max_budget: int) -> None:
             st.warning(r)
 
 
+# 🌟 DEFINITION PLACEMENT ERROR REPAIRED HERE 🌟
 def inject_js() -> None:
     components.html("""
     <script>
@@ -403,63 +393,86 @@ def inject_js() -> None:
 
 
 # ==========================================
-# 🤖  AGENT
+# 🤖  AGENT MECHANICS (DIRECT ENDPOINT PIPELINE)
 # ==========================================
-class SalesEngineerAgent:
+def _trim_memory(history: list, max_turns: int = MEMORY_TURNS) -> list:
+    pairs = []
+    i = len(history) - 1
+    while i >= 1 and len(pairs) < max_turns:
+        if history[i]["role"] == "assistant" and history[i - 1]["role"] == "user":
+            pairs.insert(0, history[i - 1])
+            pairs.insert(1, history[i])
+            i -= 2
+        else:
+            i -= 1
+    return pairs
 
-    # ── 1. Unified analysis: intent + spec extraction in ONE call ─────────────
-    def analyse(self, msg: str) -> dict:
-        """Return {intent, extracted_specs, needs_clarification, can_build}.
-        Uses Ollama's format='json' to force structured output."""
-        system = UNIFIED_ANALYSIS_PROMPT.format(
-            current_specs=json.dumps(st.session_state.current_specs, indent=2),
-            catalog=json.dumps(CATALOG, indent=2),
+
+class SalesEngineerAgent:
+    def __init__(self):
+        self.headers = {
+            "Authorization": f"Bearer {CHUTES_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+    async def _post(self, payload: dict) -> str:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(BASE_API_URL, headers=self.headers, json=payload) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    raise Exception(f"HTTP {response.status}: {text}")
+                res_json = await response.json()
+                return res_json["choices"][0]["message"]["content"].strip()
+
+    async def analyse(self, msg: str) -> dict:
+        system = (
+            UNIFIED_ANALYSIS_PROMPT
+            .replace("{current_specs}", json.dumps(st.session_state.current_specs, indent=2))
+            .replace("{catalog}", json.dumps(CATALOG, indent=2))
         )
         history = _trim_memory(st.session_state.chat_memory)
         messages = [{"role": "system", "content": system}] + history + [{"role": "user", "content": msg}]
 
+        payload = {
+            "model": TARGET_MODEL,
+            "messages": messages,
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"}
+        }
         try:
-            r = ollama.chat(
-                model=TARGET_MODEL,
-                messages=messages,
-                format="json",                  # forces JSON output mode in Ollama
-                options={"temperature": 0.0},
-            )
-            raw = _clean_json(r["message"]["content"])
-            return json.loads(raw)
-        except Exception:
+            raw_text = await self._post(payload)
+            return json.loads(raw_text)
+        except Exception as e:
+            st.toast(f"analyse() communication error: {e}", icon="🔴")
             return {
                 "intent": "technical",
-                "extracted_specs": st.session_state.current_specs.copy(),
+                "extracted_specs": st.session_state.current_specs,
                 "needs_clarification": [],
                 "can_build": False,
             }
 
-    # ── 2. AI-powered component selection ────────────────────────────────────
-    def build_solution_ai(self, criteria: dict) -> dict | None:
-        """Ask the LLM to select optimal components from the catalog.
-        Returns a draft dict ready for validate_and_quote, or None on failure."""
-        prompt = COMPONENT_PICKER_PROMPT.format(
-            criteria=json.dumps(criteria, indent=2),
-            catalog=json.dumps(CATALOG, indent=2),
+    async def build_solution_ai(self, criteria: dict) -> dict | None:
+        prompt = (
+            COMPONENT_PICKER_PROMPT
+            .replace("{criteria}", json.dumps(criteria, indent=2))
+            .replace("{catalog}", json.dumps(CATALOG, indent=2))
         )
+        payload = {
+            "model": TARGET_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"}
+        }
         try:
-            r = ollama.chat(
-                model=TARGET_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                format="json",
-                options={"temperature": 0.0},
-            )
-            raw = _clean_json(r["message"]["content"])
-            sel = json.loads(raw)
+            raw_text = await self._post(payload)
+            sel = json.loads(raw_text)
 
-            # Validate IDs exist in catalog
             lookup = {
-                "cpus":         {c["id"]: c for c in CATALOG["cpus"]},
-                "gpus":         {g["id"]: g for g in CATALOG["gpus"]},
-                "rams":         {r["id"]: r for r in CATALOG["rams"]},
-                "storages":     {s["id"]: s for s in CATALOG["storages"]},
-                "psus":         {p["id"]: p for p in CATALOG["psus"]},
+                "cpus": {c["id"]: c for c in CATALOG["cpus"]},
+                "gpus": {g["id"]: g for g in CATALOG["gpus"]},
+                "rams": {r["id"]: r for r in CATALOG["rams"]},
+                "storages": {s["id"]: s for s in CATALOG["storages"]},
+                "psus": {p["id"]: p for p in CATALOG["psus"]},
                 "motherboards": {m["id"]: m for m in CATALOG["motherboards"]},
             }
             cpu = lookup["cpus"][sel["cpu_id"]]
@@ -467,33 +480,32 @@ class SalesEngineerAgent:
             ram = lookup["rams"][sel["ram_id"]]
             ssd = lookup["storages"][sel["storage_id"]]
             psu = lookup["psus"][sel["psu_id"]]
-            mb  = lookup["motherboards"][sel["mb_id"]]
+            mb = lookup["motherboards"][sel["mb_id"]]
 
             return {
                 "bom": [
                     {"item_id": cpu["id"], "name": cpu["name"], "qty": 1, "unit_cost": cpu["cost"]},
-                    {"item_id": mb["id"],  "name": mb["name"],  "qty": 1, "unit_cost": mb["cost"]},
+                    {"item_id": mb["id"], "name": mb["name"], "qty": 1, "unit_cost": mb["cost"]},
                     {"item_id": ram["id"], "name": ram["name"], "qty": 1, "unit_cost": ram["cost"]},
                     {"item_id": ssd["id"], "name": ssd["name"], "qty": 1, "unit_cost": ssd["cost"]},
                     {"item_id": gpu["id"], "name": gpu["name"], "qty": 1, "unit_cost": gpu["cost"]},
                     {"item_id": psu["id"], "name": psu["name"], "qty": 1, "unit_cost": psu["cost"]},
                 ],
-                "tier_used":  criteria.get("performance_tier", "mid-range"),
-                "use_case":   criteria.get("use_case", "gaming"),
-                "location":   criteria.get("location", "Kuala Lumpur"),
+                "tier_used": criteria.get("performance_tier", "mid-range"),
+                "use_case": criteria.get("use_case", "gaming"),
+                "location": criteria.get("location", "Kuala Lumpur"),
                 "max_budget": int(criteria.get("max_budget", 0)),
-                "reasoning":  sel.get("reasoning", ""),
+                "reasoning": sel.get("reasoning", ""),
             }
         except Exception:
-            return None   # caller falls back to rule-based
+            return None
 
-    # ── 3. Rule-based fallback build (safety net) ─────────────────────────────
     def build_solution_rules(self, criteria: dict, downgrade: bool = False) -> dict:
         TIER_DOWN = {"high-end": "mid-range", "mid-range": "budget", "budget": "budget"}
-        tier = TIER_DOWN.get(criteria.get("performance_tier", "mid-range"), "budget") if downgrade \
-               else criteria.get("performance_tier", "mid-range")
+        tier = TIER_DOWN.get(criteria.get("performance_tier", "mid-range"), "budget") if downgrade else criteria.get(
+            "performance_tier", "mid-range")
         uc = criteria.get("use_case", "gaming")
-        C  = CATALOG
+        C = CATALOG
 
         cpu_id = {"high-end": "CPU-I9", "mid-range": "CPU-I5", "budget": "CPU-R3"}.get(tier, "CPU-R3")
         if uc == "office" or tier == "office": cpu_id = "CPU-OFC"
@@ -506,7 +518,7 @@ class SalesEngineerAgent:
         ram_gb = {"high-end": 64, "mid-range": 32, "budget": 16}.get(tier, 16)
         if uc == "workstation":      ram_gb = max(ram_gb, 64)
         if uc == "content-creation": ram_gb = max(ram_gb, 32)
-        if uc == "office":           ram_gb = min(ram_gb, 8)
+        if uc == "office" or tier == "office": ram_gb = min(ram_gb, 8)
         ram = next(r for r in C["rams"] if r["gb"] == ram_gb)
 
         ssd_id = {"high-end": "SSD-2T", "mid-range": "SSD-1T", "budget": "SSD-512"}.get(tier, "SSD-512")
@@ -514,7 +526,7 @@ class SalesEngineerAgent:
         ssd = next(s for s in C["storages"] if s["id"] == ssd_id)
 
         min_w = (cpu.get("tdp", 65) + gpu.get("tdp", 0)) * 1.6
-        psu   = next((p for p in sorted(C["psus"], key=lambda x: x["w"]) if p["w"] >= min_w), C["psus"][0])
+        psu = next((p for p in sorted(C["psus"], key=lambda x: x["w"]) if p["w"] >= min_w), C["psus"][0])
 
         mb_tier = tier if tier in ("high-end", "mid-range", "budget") else "budget"
         mb = next(m for m in C["motherboards"] if m["tier"] == mb_tier)
@@ -522,87 +534,85 @@ class SalesEngineerAgent:
         return {
             "bom": [
                 {"item_id": cpu["id"], "name": cpu["name"], "qty": 1, "unit_cost": cpu["cost"]},
-                {"item_id": mb["id"],  "name": mb["name"],  "qty": 1, "unit_cost": mb["cost"]},
+                {"item_id": mb["id"], "name": mb["name"], "qty": 1, "unit_cost": mb["cost"]},
                 {"item_id": ram["id"], "name": ram["name"], "qty": 1, "unit_cost": ram["cost"]},
                 {"item_id": ssd["id"], "name": ssd["name"], "qty": 1, "unit_cost": ssd["cost"]},
                 {"item_id": gpu["id"], "name": gpu["name"], "qty": 1, "unit_cost": gpu["cost"]},
                 {"item_id": psu["id"], "name": psu["name"], "qty": 1, "unit_cost": psu["cost"]},
             ],
             "tier_used": tier, "use_case": uc,
-            "location":  criteria.get("location", "Kuala Lumpur"),
+            "location": criteria.get("location", "Kuala Lumpur"),
             "max_budget": int(criteria.get("max_budget", 0)),
-            "reasoning": "",
+            "reasoning": "Determined via custom shop layout fallback constraints.",
         }
 
-    # ── 4. Validate & quote ───────────────────────────────────────────────────
     def validate_and_quote(self, draft: dict) -> dict:
         bom, budget = draft["bom"], draft["max_budget"]
         canonical = LOCATION_ALIASES.get(draft["location"].lower().strip(), draft["location"])
         rules = SHIPPING_REGIONS.get(canonical, DEFAULT_SHIPPING)
 
-        hw    = sum(i["qty"] * i["unit_cost"] for i in bom)
-        ship  = rules["base_fee"]
+        hw = sum(i["qty"] * i["unit_cost"] for i in bom)
+        ship = rules["base_fee"]
         total = hw + ship
-        pct   = round(total / budget * 100, 1) if budget else 0
+        pct = round(total / budget * 100, 1) if budget else 0
 
         if budget > 0 and total > budget:
             return {
-                "status":    "Rejected",
-                "reasons":   [f"Over budget by MYR {total - budget:,} (build MYR {total:,} vs cap MYR {budget:,})."],
+                "status": "Rejected",
+                "reasons": [f"Over budget by MYR {total - budget:,} (build MYR {total:,} vs cap MYR {budget:,})."],
                 "can_retry": draft["tier_used"] != "budget",
             }
+
         return {
-            "status":    "Approved",
-            "tier":      draft["tier_used"],
-            "use_case":  draft["use_case"],
-            "location":  canonical,
-            "bom":       bom,
+            "status": "Approved",
+            "tier": draft["tier_used"],
+            "use_case": draft["use_case"],
+            "location": canonical,
+            "bom": bom,
             "reasoning": draft.get("reasoning", ""),
             "financials": {"hw_total": hw, "shipping": ship, "grand_total": total, "budget_pct": pct},
         }
 
-    # ── 5. Streaming conversational response ─────────────────────────────────
-    def _stream_reply(self, messages: list, stream_slot) -> str:
-        """Generic streaming helper. Renders into stream_slot and returns full text."""
+    async def _stream_pipeline(self, messages: list, stream_slot) -> str:
+        payload = {
+            "model": TARGET_MODEL,
+            "messages": messages,
+            "temperature": 0.7,
+            "stream": True
+        }
         full_text = ""
         try:
-            for chunk in ollama.chat(
-                model=TARGET_MODEL,
-                messages=messages,
-                stream=True,
-                options={"temperature": 0.7},
-            ):
-                delta = chunk["message"]["content"]
-                full_text += delta
-                stream_slot.markdown(
-                    f'<div class="msg-bot">{BOT_AVATAR_HTML}'
-                    f'<div class="bot-text">{full_text}▌</div></div>',
-                    unsafe_allow_html=True,
-                )
-            # Final render without cursor
-            stream_slot.markdown(
-                f'<div class="msg-bot">{BOT_AVATAR_HTML}'
-                f'<div class="bot-text">{full_text}</div></div>',
-                unsafe_allow_html=True,
-            )
+            async with aiohttp.ClientSession() as session:
+                async with session.post(BASE_API_URL, headers=self.headers, json=payload) as response:
+                    async for line in response.content:
+                        line_str = line.decode("utf-8").strip()
+                        if line_str.startswith("data: "):
+                            data_chunk = line_str[6:].strip()
+                            if data_chunk == "[DONE]":
+                                break
+                            try:
+                                chunk_json = json.loads(data_chunk)
+                                delta = chunk_json["choices"][0]["delta"].get("content", "")
+                                full_text += delta
+                                stream_slot.markdown(
+                                    f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{full_text}▌</div></div>',
+                                    unsafe_allow_html=True
+                                )
+                            except Exception:
+                                continue
+            stream_slot.markdown(f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{full_text}</div></div>',
+                                 unsafe_allow_html=True)
+            return full_text
         except Exception:
-            full_text = full_text or "Sorry, I ran into an issue. Could you try again?"
-            stream_slot.markdown(
-                f'<div class="msg-bot">{BOT_AVATAR_HTML}'
-                f'<div class="bot-text">{full_text}</div></div>',
-                unsafe_allow_html=True,
-            )
-        return full_text
+            return ""
 
-    def generate_response_streamed(self, user_msg: str, result: dict, criteria: dict, stream_slot) -> str:
+    async def generate_response_streamed(self, user_msg: str, result: dict, criteria: dict, stream_slot) -> str:
         if result["status"] == "Approved":
             fin = result["financials"]
             ctx = (
                 f"Customer said: '{user_msg}'\n"
-                f"Build approved. Use case: {result['use_case']}, tier: {result['tier']}, "
-                f"location: {result['location']}.\n"
-                f"Total MYR {fin['grand_total']:,} (parts MYR {fin['hw_total']:,} + "
-                f"ship MYR {fin['shipping']:,}). "
+                f"Build approved. Use case: {result['use_case']}, tier: {result['tier']}, location: {result['location']}.\n"
+                f"Total MYR {fin['grand_total']:,} (parts MYR {fin['hw_total']:,} + ship MYR {fin['shipping']:,}). "
                 f"Budget: MYR {criteria.get('max_budget', 0):,}, utilisation {fin['budget_pct']}%.\n"
                 f"Write a warm 2-sentence confirmation. Mention use case, tier, total, and budget remaining."
             )
@@ -612,69 +622,84 @@ class SalesEngineerAgent:
                 f"Build rejected: {' | '.join(result.get('reasons', []))}\n"
                 f"2-sentence warm explanation. Suggest raising budget or switching to a lower tier."
             )
-        history  = _trim_memory(st.session_state.chat_memory)
-        messages = [{"role": "system", "content": RESPONDER_SYSTEM_PROMPT}] + history + \
-                   [{"role": "user", "content": ctx}]
-        return self._stream_reply(messages, stream_slot)
 
-    def handle_chitchat_streamed(self, msg: str, stream_slot) -> str:
-        history  = _trim_memory(st.session_state.chat_memory)
-        messages = [{"role": "system", "content": CHITCHAT_SYSTEM_PROMPT}] + history + \
-                   [{"role": "user", "content": msg}]
-        return self._stream_reply(messages, stream_slot)
+        history = _trim_memory(st.session_state.chat_memory)
+        messages = [{"role": "system", "content": RESPONDER_SYSTEM_PROMPT}] + history + [
+            {"role": "user", "content": ctx}]
 
-    def ask_for_clarification_streamed(self, user_msg: str, missing: list[str], stream_slot) -> str:
-        ctx = (
-            f"Customer said: '{user_msg}'\n"
-            f"I need: {', '.join(missing)} before I can recommend a build.\n"
-            f"Ask warmly in 1-2 sentences."
-        )
-        history  = _trim_memory(st.session_state.chat_memory)
-        messages = [{"role": "system", "content": RESPONDER_SYSTEM_PROMPT}] + history + \
-                   [{"role": "user", "content": ctx}]
-        return self._stream_reply(messages, stream_slot)
+        reply = await self._stream_pipeline(messages, stream_slot)
+        if not reply:
+            reply = f"Your **{result.get('tier', '?')} {result.get('use_case', '?')}** build is confirmed — MYR {result['financials']['grand_total']:,} total." if \
+            result["status"] == "Approved" else "That build exceeded the budget parameters. Try raising the cap limit."
+            stream_slot.markdown(f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{reply}</div></div>',
+                                 unsafe_allow_html=True)
+        return reply
+
+    async def handle_chitchat_streamed(self, msg: str, stream_slot) -> str:
+        history = _trim_memory(st.session_state.chat_memory)
+        messages = [{"role": "system", "content": CHITCHAT_SYSTEM_PROMPT}] + history + [
+            {"role": "user", "content": msg}]
+        reply = await self._stream_pipeline(messages, stream_slot)
+        if not reply:
+            reply = "Hello! Tell me what sort of custom system we are putting together today."
+            stream_slot.markdown(f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{reply}</div></div>',
+                                 unsafe_allow_html=True)
+        return reply
+
+    async def ask_for_clarification_streamed(self, user_msg: str, missing: list[str], stream_slot) -> str:
+        ctx = f"Customer said: '{user_msg}'\nI need: {', '.join(missing)} before I can recommend a build.\nAsk warmly in 1-2 sentences."
+        history = _trim_memory(st.session_state.chat_memory)
+        messages = [{"role": "system", "content": RESPONDER_SYSTEM_PROMPT}] + history + [
+            {"role": "user", "content": ctx}]
+        reply = await self._stream_pipeline(messages, stream_slot)
+        if not reply:
+            reply = "I would love to help configure that setup! Could you share your missing use case or shipping location context?"
+            stream_slot.markdown(f'<div class="msg-bot">{BOT_AVATAR_HTML}<div class="bot-text">{reply}</div></div>',
+                                 unsafe_allow_html=True)
+        return reply
 
 
 # ==========================================
-# 🚀  UI
+# ⚖️  UI & INTERACTION ENGINE
 # ==========================================
 st.set_page_config(page_title="ByteForge PC Builder", layout="wide", page_icon="🖥️")
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 defaults = {
-    "current_specs":   BLANK_SPECS.copy(),
+    "current_specs": BLANK_SPECS.copy(),
     "display_history": [],
-    "chat_memory":     [],
-    "pill_input":      None,
-    "processing":      False,
-    "pending_input":   None,
+    "chat_memory": [],
+    "pill_input": None,
+    "processing": False,
+    "pending_input": None,
 }
 for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+    if k not in st.session_state: st.session_state[k] = v
 
 agent = SalesEngineerAgent()
 
 st.markdown(f"""<div style="display:flex;align-items:center;gap:12px;padding-top:4px;margin-bottom:4px;">
-  <div style="color:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{MONITOR_SVG}</div>
+  <div style="color:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+    {MONITOR_SVG}
+  </div>
   <div>
     <div style="font-size:1.1rem;font-weight:700;line-height:1.2;">ByteForge PC Builder</div>
-    <div style="font-size:0.72rem;opacity:0.4;letter-spacing:0.3px;">AI Sales Engineer · Powered by Ollama</div>
+    <div style="font-size:0.72rem;opacity:0.4;letter-spacing:0.3px;">AI Sales Engineer · Powered by Chutes</div>
   </div>
 </div>
 <hr style="margin:6px 0 8px;border:none;border-top:1px solid rgba(128,128,128,0.2);">""", unsafe_allow_html=True)
 
 col_left, col_right = st.columns([1, 2], gap="large")
 
-# ── LEFT PANEL ──────────────────────────────────────────────────────────────
+# ── LEFT SIDE CONFIGURATION CARD ────────────────────────────────────
 with col_left:
     with st.container(border=True):
         st.markdown(f"<div class='section-label'>{GRAPH_SVG} Build Configuration</div>", unsafe_allow_html=True)
         s = st.session_state.current_specs
         c1, c2 = st.columns(2)
         c1.metric("Use Case", str(s.get("use_case", "—")).replace("-", " ").title())
-        c2.metric("Tier",     str(s.get("performance_tier", "—")).title())
-        c1.metric("Budget",   f"MYR {s.get('max_budget', 0):,}")
+        c2.metric("Tier", str(s.get("performance_tier", "—")).title())
+        c1.metric("Budget", f"MYR {s.get('max_budget', 0):,}")
         c2.metric("Location", str(s.get("location", "—")))
 
     st.markdown("<div class='section-label'>Try asking</div>", unsafe_allow_html=True)
@@ -694,7 +719,7 @@ with col_left:
         for k in defaults: st.session_state.pop(k, None)
         st.rerun()
 
-# ── RIGHT PANEL ─────────────────────────────────────────────────────────────
+# ── RIGHT SIDE CONSULTATION CHATBOX CONTAINER ───────────────────────
 with col_right:
     st.markdown("<div class='section-label'>Consultation</div>", unsafe_allow_html=True)
     chat_box = st.container(height=600, border=False)
@@ -709,76 +734,86 @@ with col_right:
         for msg in st.session_state.display_history:
             show_message(msg["role"], msg["content"], msg.get("result"), msg.get("max_budget", 0))
 
-        stream_slot = st.empty()   # live streaming renders here
+        # Dynamic Streaming Placeholders
+        stream_slot = st.empty()
+        typing_slot = st.empty()
+
+        # Kept active here during background processing loops
+        if st.session_state.processing:
+            typing_slot.markdown(TYPING_BUBBLE, unsafe_allow_html=True)
+
         st.markdown('<div id="chat-end" style="height:1px;"></div>', unsafe_allow_html=True)
 
     inject_js()
 
-    typed      = st.chat_input("Describe your PC needs in plain English…")
+    typed = st.chat_input("Describe your PC needs in plain English…")
     user_input = typed or st.session_state.pill_input
 
-    # ── Phase 1: capture input, show user bubble, rerun ─────────────────────
+    # ── Input Router Trigger ────────────────────────────────────────
     if user_input and not st.session_state.processing:
-        st.session_state.pill_input    = None
+        st.session_state.pill_input = None
         st.session_state.pending_input = user_input
-        st.session_state.processing    = True
+        st.session_state.processing = True
         st.session_state.display_history.append({"role": "user", "content": user_input})
         st.session_state.chat_memory.append({"role": "user", "content": user_input})
         st.rerun()
 
-    # ── Phase 2: AI pipeline ─────────────────────────────────────────────────
+    # ── Active Live Async Pipeline Processing ────────────────────────
     if st.session_state.processing and st.session_state.pending_input:
         user_msg = st.session_state.pending_input
 
-        # Step 1 — unified analysis (1 LLM call replaces the old classify + parse)
-        analysis  = agent.analyse(user_msg)
-        intent    = analysis.get("intent", "technical")
-        criteria  = analysis.get("extracted_specs", st.session_state.current_specs.copy())
-        missing   = analysis.get("needs_clarification", [])
+        # Step 1: Execute concurrent analysis mapping extraction logic
+        analysis = asyncio.run(agent.analyse(user_msg))
+        intent = analysis.get("intent", "technical")
+        criteria = analysis.get("extracted_specs", st.session_state.current_specs)
+        missing = analysis.get("needs_clarification", [])
         can_build = analysis.get("can_build", False)
 
         if intent == "chitchat":
-            reply = agent.handle_chitchat_streamed(user_msg, stream_slot)
+            typing_slot.empty()  # Wipe out the typing dots right before the text streaming block starts
+            reply = asyncio.run(agent.handle_chitchat_streamed(user_msg, stream_slot))
             entry = {"role": "assistant", "content": reply}
 
         elif missing or not can_build:
             st.session_state.current_specs = criteria
-            reply = agent.ask_for_clarification_streamed(
-                user_msg, missing or ["use case or location"], stream_slot)
+            typing_slot.empty()  # Wipe out the typing dots right before the text streaming block starts
+            reply = asyncio.run(
+                agent.ask_for_clarification_streamed(user_msg, missing or ["use case and shipping location"],
+                                                     stream_slot))
             entry = {"role": "assistant", "content": reply}
 
         else:
             st.session_state.current_specs = criteria
 
-            # Step 2 — AI component selection, with rule-based fallback
-            draft  = agent.build_solution_ai(criteria)
-            result = agent.validate_and_quote(draft) if draft \
-                     else {"status": "Rejected", "reasons": ["AI build failed."], "can_retry": True}
+            # Step 2: Execute build matching optimization loops
+            draft = asyncio.run(agent.build_solution_ai(criteria)) or agent.build_solution_rules(criteria)
+            result = agent.validate_and_quote(draft)
 
-            # If rejected and a lower tier exists, retry
+            # Downgrade Fallback Logic
             if result["status"] == "Rejected" and result.get("can_retry"):
                 tier_down = {"high-end": "mid-range", "mid-range": "budget", "budget": "budget"}
-                fallback  = {**criteria,
-                             "performance_tier": tier_down.get(criteria.get("performance_tier", "budget"), "budget")}
-                draft2    = agent.build_solution_ai(fallback) or agent.build_solution_rules(fallback)
-                result2   = agent.validate_and_quote(draft2)
+                fallback = dict(criteria)
+                fallback["performance_tier"] = tier_down.get(criteria.get("performance_tier", "budget"), "budget")
+                draft2 = asyncio.run(agent.build_solution_ai(fallback)) or agent.build_solution_rules(fallback)
+                result2 = agent.validate_and_quote(draft2)
                 if result2["status"] == "Approved":
                     result = result2
 
-            # Step 3 — streamed conversational response
-            reply = agent.generate_response_streamed(user_msg, result, criteria, stream_slot)
+            # Step 3: Stream response text output
+            typing_slot.empty()  # Clear typing animation bubble container the exact millisecond streaming tokens hit the screen
+            reply = asyncio.run(agent.generate_response_streamed(user_msg, result, criteria, stream_slot))
             entry = {
-                "role":       "assistant",
-                "content":    reply,
-                "result":     result,
+                "role": "assistant",
+                "content": reply,
+                "result": result,
                 "max_budget": criteria.get("max_budget", 0),
             }
 
-        # Commit & trim memory
+        # Save turns to memory configurations
         st.session_state.display_history.append(entry)
         st.session_state.chat_memory.append({"role": "assistant", "content": reply})
         st.session_state.chat_memory = _trim_memory(st.session_state.chat_memory, MEMORY_TURNS)
 
-        st.session_state.processing    = False
+        st.session_state.processing = False
         st.session_state.pending_input = None
         st.rerun()
